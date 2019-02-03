@@ -7,6 +7,7 @@ import time
 import json
 import re
 
+from tqdm import tqdm
 import tensorflow as tf
 import numpy as np
 
@@ -18,7 +19,7 @@ from .data import Vocabulary, UnicodeCharsVocabulary, InvalidNumberOfCharacters
 DTYPE = 'float32'
 DTYPE_INT = 'int64'
 
-tf.logging.set_verbosity(tf.logging.INFO)
+tf.logging.set_verbosity(tf.logging.ERROR)
 
 
 def print_variable_summary():
@@ -133,7 +134,7 @@ class LanguageModel(object):
         batch_size = self.options['batch_size']
         unroll_steps = self.options['unroll_steps']
         projection_dim = self.options['lstm']['projection_dim']
-    
+
         cnn_options = self.options['char_cnn']
         filters = cnn_options['filters']
         n_filters = sum(f[1] for f in filters)
@@ -149,7 +150,7 @@ class LanguageModel(object):
         elif cnn_options['activation'] == 'relu':
             activation = tf.nn.relu
 
-        # the input character ids 
+        # the input character ids
         self.tokens_characters = tf.placeholder(DTYPE_INT,
                                    shape=(batch_size, unroll_steps, max_chars),
                                    name='tokens_characters')
@@ -214,7 +215,7 @@ class LanguageModel(object):
 
                     # activation
                     conv = activation(conv)
-                    conv = tf.squeeze(conv, squeeze_dims=[2])
+                    conv = tf.squeeze(conv, axis=[2])
 
                     convolutions.append(conv)
 
@@ -295,7 +296,7 @@ class LanguageModel(object):
                                              W_carry, b_carry,
                                              W_transform, b_transform)
                 self.token_embedding_layers.append(
-                    tf.reshape(embedding, 
+                    tf.reshape(embedding,
                         [batch_size, unroll_steps, highway_dim])
                 )
 
@@ -358,8 +359,8 @@ class LanguageModel(object):
 
         use_skip_connections = self.options['lstm'].get(
                                             'use_skip_connections')
-        if use_skip_connections:
-            print("USING SKIP CONNECTIONS")
+        # if use_skip_connections:
+            # print("USING SKIP CONNECTIONS")
 
         lstm_outputs = []
         for lstm_num, lstm_input in enumerate(lstm_inputs):
@@ -516,7 +517,7 @@ class LanguageModel(object):
                     #   softmax internally
                     losses = tf.nn.sparse_softmax_cross_entropy_with_logits(
                         logits=output_scores,
-                        labels=tf.squeeze(next_token_id_flat, squeeze_dims=[1])
+                        labels=tf.squeeze(next_token_id_flat, axis=[1])
                     )
 
             self.individual_losses.append(tf.reduce_mean(losses))
@@ -566,7 +567,7 @@ def average_gradients(tower_grads, batch_size, options):
             for g, v in grad_and_vars:
                 # Add 0 dimension to the gradients to represent the tower.
                 expanded_g = tf.expand_dims(g, 0)
-                # Append on a 'tower' dimension which we will average over 
+                # Append on a 'tower' dimension which we will average over
                 grads.append(expanded_g)
 
             # Average over the 'tower' dimension.
@@ -582,7 +583,7 @@ def average_gradients(tower_grads, batch_size, options):
         average_grads.append(grad_and_var)
 
     assert len(average_grads) == len(list(zip(*tower_grads)))
-    
+
     return average_grads
 
 
@@ -770,7 +771,7 @@ def train(options, data, n_gpus, tf_save_dir, tf_log_dir,
         if restart_ckpt_file is not None:
             loader = tf.train.Saver()
             loader.restore(sess, restart_ckpt_file)
-            
+
         summary_writer = tf.summary.FileWriter(tf_log_dir, sess.graph)
 
         # For each batch:
@@ -871,12 +872,12 @@ def train(options, data, n_gpus, tf_save_dir, tf_log_dir,
             else:
                 # also run the histogram summaries
                 ret = sess.run(
-                    [train_op, summary_op, train_perplexity, hist_summary_op] + 
+                    [train_op, summary_op, train_perplexity, hist_summary_op] +
                                                 final_state_tensors,
                     feed_dict=feed_dict
                 )
                 init_state_values = ret[4:]
-                
+
 
             if batch_no % 1250 == 0:
                 summary_writer.add_summary(ret[3], batch_no)
@@ -909,7 +910,7 @@ def clip_by_global_norm_summary(t_list, clip_norm, norm_name, variables):
         name = 'norm_pre_clip/' + v.name.replace(":", "_")
         summary_ops.append(tf.summary.scalar(name, ns))
 
-    # clip 
+    # clip
     clipped_t_list, tf_norm = tf.clip_by_global_norm(t_list, clip_norm)
 
     # summary ops after clipping
@@ -990,7 +991,7 @@ def test(options, ckpt_file, data, batch_size=256):
                 feed_dict.update({
                     model.token_ids_reverse:
                         np.zeros([batch_size, unroll_steps], dtype=np.int64)
-                })  
+                })
         else:
             feed_dict = {
                 model.tokens_characters:
@@ -1020,7 +1021,7 @@ def test(options, ckpt_file, data, batch_size=256):
                                         init_state_tensors, init_state_values)}
 
             feed_dict.update(
-                _get_feed_dict_from_X(X, 0, X['token_ids'].shape[0], model, 
+                _get_feed_dict_from_X(X, 0, X['token_ids'].shape[0], model,
                                           char_inputs, bidirectional)
             )
 
@@ -1042,6 +1043,97 @@ def test(options, ckpt_file, data, batch_size=256):
     print("FINSIHED!  AVERAGE PERPLEXITY = %s" % np.exp(avg_loss))
 
     return np.exp(avg_loss)
+
+def tag(options, ckpt_file, shards, datasets, batch_size=1):
+    '''
+    Get perplexity of each word.
+    '''
+
+    bidirectional = options.get('bidirectional', False)
+    char_inputs = 'char_cnn' in options
+    if char_inputs:
+        max_chars = options['char_cnn']['max_characters_per_token']
+
+    unroll_steps = 1
+
+    config = tf.ConfigProto(allow_soft_placement=True)
+    with tf.Session(config=config) as sess:
+        with tf.device('/gpu:0'), tf.variable_scope('lm'):
+            test_options = dict(options)
+            # NOTE: the number of tokens we skip in the last incomplete
+            # batch is bounded above batch_size * unroll_steps
+            test_options['batch_size'] = batch_size
+            test_options['unroll_steps'] = 1
+            model = LanguageModel(test_options, False)
+            # we use the "Saver" class to load the variables
+            loader = tf.train.Saver()
+            loader.restore(sess, ckpt_file)
+
+        # model.total_loss is the op to compute the loss
+        # perplexity is exp(loss)
+        init_state_tensors = model.init_lstm_state
+        final_state_tensors = model.final_lstm_state
+        if not char_inputs:
+            feed_dict = {
+                model.token_ids:
+                        np.zeros([batch_size, unroll_steps], dtype=np.int64)
+            }
+            if bidirectional:
+                feed_dict.update({
+                    model.token_ids_reverse:
+                        np.zeros([batch_size, unroll_steps], dtype=np.int64)
+                })
+        else:
+            feed_dict = {
+                model.tokens_characters:
+                   np.zeros([batch_size, unroll_steps, max_chars],
+                                 dtype=np.int32)
+            }
+            if bidirectional:
+                feed_dict.update({
+                    model.tokens_characters_reverse:
+                        np.zeros([batch_size, unroll_steps, max_chars],
+                            dtype=np.int32)
+                })
+
+        init_state_values = sess.run(
+            init_state_tensors,
+            feed_dict=feed_dict)
+
+        for dataset_no, (shard, data) in enumerate(zip(shards, datasets)):
+            print(dataset_no, end=': ')
+            t1 = time.time()
+            batch_losses = []
+            total_loss = 0.0
+            perplexity_array = []
+            for batch_no, batch in enumerate(
+                                    data.iter_batches(batch_size, 1), start=1):
+                # slice the input in the batch for the feed_dict
+                X = batch
+
+                feed_dict = {t: v for t, v in zip(
+                                            init_state_tensors, init_state_values)}
+
+                feed_dict.update(
+                    _get_feed_dict_from_X(X, 0, X['token_ids'].shape[0], model,
+                                              char_inputs, bidirectional)
+                )
+
+                ret = sess.run(
+                    [model.total_loss, final_state_tensors],
+                    feed_dict=feed_dict
+                )
+
+                loss, init_state_values = ret
+                batch_losses.append(loss)
+                batch_perplexity = np.exp(loss)
+                # total_loss += loss
+                # avg_perplexity = np.exp(total_loss / batch_no)
+                perplexity_array.append(batch_perplexity)
+
+            avg_loss = np.mean(batch_losses)
+            avg_perplexity = np.exp(avg_loss)
+            print(avg_perplexity)
 
 
 def load_options_latest_checkpoint(tf_save_dir):
@@ -1105,4 +1197,3 @@ def dump_weights(tf_save_dir, outfile):
                 dset = fout.create_dataset(outname, shape, dtype='float32')
                 values = sess.run([v])[0]
                 dset[...] = values
-

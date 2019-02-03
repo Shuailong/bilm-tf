@@ -191,7 +191,7 @@ class UnicodeCharsVocabulary(Vocabulary):
 
 
 class Batcher(object):
-    ''' 
+    '''
     Batch sentences of tokenized text into character id matrices.
     '''
     def __init__(self, lm_vocab_file: str, max_token_length: int):
@@ -230,7 +230,7 @@ class Batcher(object):
 
 
 class TokenBatcher(object):
-    ''' 
+    '''
     Batch sentences of tokenized text into token id matrices.
     '''
     def __init__(self, lm_vocab_file: str):
@@ -462,4 +462,3 @@ class BidirectionalLMDataset(object):
 
 class InvalidNumberOfCharacters(Exception):
     pass
-

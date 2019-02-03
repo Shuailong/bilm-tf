@@ -7,12 +7,14 @@ from bilm.training import train, load_options_latest_checkpoint, load_vocab
 from bilm.data import LMDataset, BidirectionalLMDataset
 
 def main(args):
+    print('Loading checkpoint...')
     options, ckpt_file = load_options_latest_checkpoint(args.save_dir)
 
     if 'char_cnn' in options:
         max_word_length = options['char_cnn']['max_characters_per_token']
     else:
         max_word_length = None
+    print('Loading vocab...')
     vocab = load_vocab(args.vocab_file, max_word_length)
 
     prefix = args.train_prefix
@@ -21,7 +23,7 @@ def main(args):
         'test': False,
         'shuffle_on_load': True,
     }
-
+    print('Building dataset...')
     if options.get('bidirectional'):
         data = BidirectionalLMDataset(prefix, vocab, **kwargs)
     else:
@@ -37,7 +39,7 @@ def main(args):
         options['n_epochs'] = args.n_epochs
     if args.batch_size > 0:
         options['batch_size'] = args.batch_size
-
+    print('Start training...')
     train(options, data, args.n_gpus, tf_save_dir, tf_log_dir,
           restart_ckpt_file=ckpt_file)
 
@@ -55,4 +57,3 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     main(args)
-
