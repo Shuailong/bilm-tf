@@ -6,4 +6,5 @@ data/
 *.pyc
 *.swp
 
+.DS_Store
 

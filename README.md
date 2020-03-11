@@ -15,11 +15,12 @@ python setup.py install
 
 ## Run Evaluation
 
-1. Data file format: each line in a file is a sentence to calculate perplexity. [demo](demodata/sents.txt)
+1. Data file format: each line in a file is a sentence to calculate perplexity. [data](data/sents.txt)
 
 2. Split data file into pieces, one sentence per piece.
 
 ```bash
+cd data
 split sents.txt -d -l 1 -a 4 cs
 ```
 
@@ -44,7 +45,30 @@ Sentence line number followed by the perplxity (unnormalized by sentence length)
 
 ## Finetune
 
-To finetune the ELMo on additional corpus, you can use the following script.
+To finetune the ELMo on additional corpus, first downlaod the pretrained model to `models/`
+
+The tensorflow checkpoint is available by downloading these files:
+
+[vocabulary](https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/vocab-2016-09-10.txt)
+[checkpoint](https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_tf_checkpoint/checkpoint)
+[options](https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_tf_checkpoint/options.json)
+[1](https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_tf_checkpoint/model.ckpt-935588.data-00000-of-00001)
+[2](https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_tf_checkpoint/model.ckpt-935588.index)
+[3](https://s3-us-west-2.amazonaws.com/allennlp/models/elmo/2x4096_512_2048cnn_2xhighway_tf_checkpoint/model.ckpt-935588.meta)
+
+<pre>
+|
+|--models
+    |--vocab-2016-09-10.txt
+    |--checkpoint
+            |--checkpoint
+            |--options.json
+            |--model.ckpt-935588.meta
+            |--model.ckpt-935588.index
+            |--model.ckpt-935588.data-00000-of-00001
+</pre>
+
+Then use the following script.
 
 ```bash
 sh finetune.sh

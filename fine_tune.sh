@@ -6,9 +6,9 @@
 export CUDA_VISIBLE_DEVICES=1
 
 python bin/restart.py \
-    --save_dir /data/lsl/BiLM/checkpoint \
-    --vocab_file /data/lsl/BiLM/vocab-2016-09-10.txt \
-    --train_prefix "/data/lsl/CSR/additional_corpus.txt" \
+    --save_dir models/checkpoint \
+    --vocab_file models/vocab-2016-09-10.txt \
+    --train_prefix "data/additional_corpus.txt" \
     --n_gpus 1 \
     --batch_size 128 \
     --n_train_tokens 768648884 \

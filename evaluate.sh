@@ -5,7 +5,7 @@
 export CUDA_VISIBLE_DEVICES=1
 
 python bin/run_tag.py \
-    --test_prefix="/data/lsl/CSR/cs*" \
-    --vocab_file /data/lsl/BiLM/vocab-2016-09-10.txt \
-    --save_dir /data/lsl/BiLM/checkpoint \
+    --test_prefix="data/cs*" \
+    --vocab_file models/vocab-2016-09-10.txt \
+    --save_dir models/checkpoint \
     --batch_size 1
